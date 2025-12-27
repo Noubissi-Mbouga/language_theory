@@ -1,0 +1,69 @@
+name: Build Embedded EXE
+
+on:
+  push:
+    branches: [ main ]
+  release:
+    types: [created]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: |
+        pip install PyQt6 graphviz pyinstaller
+        
+    - name: Build embedded executable
+      run: |
+        python build_embedded.py
+        
+    - name: Upload executable
+      uses: actions/upload-artifact@v4
+      with:
+        name: GrammaireChecker-Embedded
+        path: |
+          dist/GrammaireChecker.exe
+          Lancer.bat
+          
+    - name: Create Release
+      if: github.event_name == 'release'
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          dist/GrammaireChecker.exe
+          Lancer.bat
+        body: |
+          # 🎉 GrammaireChecker - Version Tout-en-un
+          
+          ## ✨ NOUVEAU : Graphviz inclus dans l'exécutable !
+          
+          ### 📥 Installation
+          Aucune ! C'est un exécutable portable.
+          
+          ### 🚀 Utilisation
+          1. Téléchargez `GrammaireChecker.exe`
+          2. Double-cliquez
+          3. C'est tout !
+          
+          ### 📦 Contenu inclus
+          - ✅ Votre application
+          - ✅ Graphviz (dot.exe)
+          - ✅ Toutes les dépendances
+          
+          ### ⚡ Caractéristiques
+          - Poids : ~50-80 MB (tout inclus)
+          - Compatible : Windows 7+
+          - Portable : Copiez où vous voulez
+          
+          ## 🛠️ Développement
+          Construit avec GitHub Actions le ${{ github.event.release.created_at }}
