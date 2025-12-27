@@ -3,67 +3,102 @@ name: Build Embedded EXE
 on:
   push:
     branches: [ main ]
-  release:
-    types: [created]
+  workflow_dispatch:  # Permet de déclencher manuellement
 
 jobs:
   build:
     runs-on: windows-latest
     
     steps:
-    - name: Checkout
+    - name: Checkout code
       uses: actions/checkout@v4
       
     - name: Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
+        architecture: 'x64'
         
-    - name: Install dependencies
+    - name: Install Python dependencies
       run: |
-        pip install PyQt6 graphviz pyinstaller
+        python -m pip install --upgrade pip
+        pip install PyQt6==6.6.0
+        pip install graphviz==0.20.1
+        pip install pyinstaller==6.2.0
+        
+    - name: Create src directory if needed
+      run: |
+        # Créer la structure de dossier si elle n'existe pas
+        if not exist src mkdir src
+        if not exist data mkdir data
+        
+        # Vérifier les fichiers sources
+        echo "Vérification des fichiers..."
+        dir /s /b *.py || echo "Aucun fichier .py trouvé"
+        
+    - name: Copy source files to src directory
+      run: |
+        # Copier les fichiers Python dans src/
+        copy *.py src\ 2>nul || echo "Aucun fichier .py à copier"
+        
+        # Vérifier le contenu
+        echo "Contenu de src/:"
+        dir src\ || echo "src/ vide"
         
     - name: Build embedded executable
       run: |
         python build_embedded.py
         
-    - name: Upload executable
+    - name: Verify the executable
+      run: |
+        echo "Vérification de l'exécutable..."
+        if exist dist\GrammaireChecker.exe (
+            echo "✅ EXE trouvé: dist\GrammaireChecker.exe"
+            dir dist\GrammaireChecker.exe
+        ) else (
+            echo "❌ EXE non trouvé"
+            echo "Contenu de dist/:"
+            dir dist\ || echo "dist/ vide"
+            exit 1
+        )
+        
+    - name: Upload executable as artifact
       uses: actions/upload-artifact@v4
       with:
-        name: GrammaireChecker-Embedded
+        name: GrammaireChecker-Portable
         path: |
           dist/GrammaireChecker.exe
-          Lancer.bat
-          
-    - name: Create Release
-      if: github.event_name == 'release'
+          dist/Lancer.bat
+        retention-days: 7
+        
+    - name: Create Release (on tag)
+      if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
       with:
         files: |
           dist/GrammaireChecker.exe
-          Lancer.bat
+          dist/Lancer.bat
         body: |
-          # 🎉 GrammaireChecker - Version Tout-en-un
+          # GrammaireChecker - Version Tout-en-un
           
-          ## ✨ NOUVEAU : Graphviz inclus dans l'exécutable !
+          ## NOUVEAU : Graphviz inclus dans l'exécutable !
           
-          ### 📥 Installation
+          ### Installation
           Aucune ! C'est un exécutable portable.
           
-          ### 🚀 Utilisation
+          ### Utilisation
           1. Téléchargez `GrammaireChecker.exe`
           2. Double-cliquez
           3. C'est tout !
           
-          ### 📦 Contenu inclus
-          - ✅ Votre application
-          - ✅ Graphviz (dot.exe)
-          - ✅ Toutes les dépendances
+          ### Contenu inclus
+          - Votre application
+          - Graphviz (dot.exe)
+          - Toutes les dépendances
           
-          ### ⚡ Caractéristiques
-          - Poids : ~50-80 MB (tout inclus)
-          - Compatible : Windows 7+
+          ### Caractéristiques
           - Portable : Copiez où vous voulez
+          - Compatible : Windows 7+
           
-          ## 🛠️ Développement
-          Construit avec GitHub Actions le ${{ github.event.release.created_at }}
+          ## Développement
+          Construit avec GitHub Actions
