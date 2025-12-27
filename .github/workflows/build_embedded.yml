@@ -3,7 +3,7 @@ name: Build Embedded EXE
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:  # Permet de déclencher manuellement
+  workflow_dispatch:
 
 jobs:
   build:
@@ -17,7 +17,6 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-        architecture: 'x64'
         
     - name: Install Python dependencies
       run: |
@@ -26,79 +25,98 @@ jobs:
         pip install graphviz==0.20.1
         pip install pyinstaller==6.2.0
         
-    - name: Create src directory if needed
+    - name: Create directory structure
+      shell: cmd  # <-- IMPORTANT: utiliser CMD au lieu de PowerShell
       run: |
-        # Créer la structure de dossier si elle n'existe pas
+        echo Création de la structure de dossiers...
+        
         if not exist src mkdir src
         if not exist data mkdir data
+        if not exist graphviz mkdir graphviz
         
-        # Vérifier les fichiers sources
-        echo "Vérification des fichiers..."
-        dir /s /b *.py || echo "Aucun fichier .py trouvé"
+        echo Vérification des fichiers sources...
+        dir *.py || echo Aucun fichier .py dans le répertoire courant
         
-    - name: Copy source files to src directory
+    - name: Copy Python files to src
+      shell: cmd  # <-- IMPORTANT: utiliser CMD
       run: |
-        # Copier les fichiers Python dans src/
-        copy *.py src\ 2>nul || echo "Aucun fichier .py à copier"
+        echo Copie des fichiers Python...
         
-        # Vérifier le contenu
-        echo "Contenu de src/:"
-        dir src\ || echo "src/ vide"
-        
-    - name: Build embedded executable
-      run: |
-        python build_embedded.py
-        
-    - name: Verify the executable
-      run: |
-        echo "Vérification de l'exécutable..."
-        if exist dist\GrammaireChecker.exe (
-            echo "✅ EXE trouvé: dist\GrammaireChecker.exe"
-            dir dist\GrammaireChecker.exe
+        if exist *.py (
+          copy *.py src\
+          echo Fichiers copiés dans src/
         ) else (
-            echo "❌ EXE non trouvé"
-            echo "Contenu de dist/:"
-            dir dist\ || echo "dist/ vide"
-            exit 1
+          echo Aucun fichier .py à copier
         )
+        
+        echo Contenu de src/:
+        dir src\ || echo Le dossier src/ est vide
+        
+    - name: Download Graphviz portable
+      shell: cmd  # <-- IMPORTANT: utiliser CMD
+      run: |
+        echo Téléchargement de Graphviz portable...
+        
+        if not exist graphviz\bin\dot.exe (
+          echo Téléchargement depuis GitHub...
+          curl -L -o graphviz.zip https://github.com/mcxiaoke/graphviz-portable/releases/download/v2.50.0/GraphvizPortable_2.50.0.zip
+          
+          echo Extraction...
+          if exist graphviz.zip (
+            powershell -Command "Expand-Archive -Path graphviz.zip -DestinationPath . -Force"
+            del graphviz.zip
+            
+            echo Réorganisation des fichiers...
+            if exist GraphvizPortable (
+              xcopy GraphvizPortable\* graphviz\ /E /I /Y
+              rd GraphvizPortable /S /Q
+            )
+          )
+        ) else (
+          echo Graphviz est déjà présent
+        )
+        
+    - name: Build with PyInstaller
+      shell: cmd  # <-- IMPORTANT: utiliser CMD
+      run: |
+        echo Construction avec PyInstaller...
+        
+        pyinstaller --onefile --windowed ^
+          --name=GrammaireChecker ^
+          --hidden-import=graphviz ^
+          --hidden-import=graphviz.backend ^
+          --hidden-import=graphviz.backend.execute ^
+          --add-data="graphviz;graphviz" ^
+          --add-data="src;src" ^
+          --clean ^
+          src/interface.py
+        
+        echo Vérification du résultat...
+        if exist dist\GrammaireChecker.exe (
+          echo SUCCÈS: dist\GrammaireChecker.exe créé
+          dir dist\GrammaireChecker.exe
+        ) else (
+          echo ÉCHEC: Fichier non créé
+          exit 1
+        )
+        
+    - name: Create launcher script
+      shell: cmd
+      run: |
+        echo Création du script de lancement...
+        
+        echo @echo off > dist\Lancer.bat
+        echo echo GrammaireChecker - Version Portable >> dist\Lancer.bat
+        echo echo. >> dist\Lancer.bat
+        echo echo Lancement de l'application... >> dist\Lancer.bat
+        echo echo. >> dist\Lancer.bat
+        echo start "" "GrammaireChecker.exe" >> dist\Lancer.bat
+        echo pause >> dist\Lancer.bat
         
     - name: Upload executable as artifact
       uses: actions/upload-artifact@v4
       with:
-        name: GrammaireChecker-Portable
+        name: GrammaireChecker
         path: |
           dist/GrammaireChecker.exe
           dist/Lancer.bat
-        retention-days: 7
-        
-    - name: Create Release (on tag)
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v1
-      with:
-        files: |
-          dist/GrammaireChecker.exe
-          dist/Lancer.bat
-        body: |
-          # GrammaireChecker - Version Tout-en-un
-          
-          ## NOUVEAU : Graphviz inclus dans l'exécutable !
-          
-          ### Installation
-          Aucune ! C'est un exécutable portable.
-          
-          ### Utilisation
-          1. Téléchargez `GrammaireChecker.exe`
-          2. Double-cliquez
-          3. C'est tout !
-          
-          ### Contenu inclus
-          - Votre application
-          - Graphviz (dot.exe)
-          - Toutes les dépendances
-          
-          ### Caractéristiques
-          - Portable : Copiez où vous voulez
-          - Compatible : Windows 7+
-          
-          ## Développement
-          Construit avec GitHub Actions
